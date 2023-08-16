@@ -4,8 +4,9 @@ var path = require('path');
 var fs = require('fs');
 const http = require('http');
 const printer = require('@thiagoelg/node-printer');
-const { print,getPrinters,getDefaultPrinter } = require('pdf-to-printer');
+const { print, getPrinters, getDefaultPrinter } = require('pdf-to-printer');
 const request = require('request');
+var exec = require('child_process').exec;
 const axios = require('axios');
 
 module.exports = function (io) {
@@ -24,14 +25,11 @@ module.exports = function (io) {
             response.data.pipe(writableStream);
             writableStream.on('finish', async () => {
 
-                var printerList = printer.getPrinters();
-                console.log(printerList);
-                var data = await getDefaultPrinter();
-                const options = {
-                    printer: data["name"],
-                };
+                var cmd = 'PDFtoPrinter.exe my-report-1.pdf "' + data["name"] + '"';
 
-                print(filename, options).then(console.log);
+                exec(cmd, function (error, stdout, stderr) {
+                    // command output is in stdout
+                });
             });
 
         });

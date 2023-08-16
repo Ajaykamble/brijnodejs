@@ -1,8 +1,9 @@
 var cors = require('cors');
 const express=require('express');
+require('express-group-routes');
 const app=express();
 var path = require("path");
-
+const userRoutes = require('./api/Routes/userRoute');
 const corsOptions = {
     "origin": "*",
     "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
@@ -23,7 +24,10 @@ app.use((req,res,next)=>{
     next();
 });
 
-
+app.group("/api/v1", (router) => {
+    router.use('/user', userRoutes);
+    //PDFtoPrinter my-report-1.pdf "Microsoft Print to PDF"
+});
 ///admin
 
 module.exports=app;
