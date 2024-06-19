@@ -9,11 +9,14 @@ var { spawn } = require('child_process');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid'); // Using UUID for unique filenames
 
+let printQueue = [];
+let isPrinting = false;
+
 module.exports = function (io) {
     console.log("CA");
     io.sockets.on('connection', function (socket) {
         console.log("Connected", socket.id);
-        socket.on('sendMessage', async function (mes) {
+        socket.on('sendMessage', function (mes) {
             console.log("Connected", mes);
             //2024-06-02 11:31:36*23*Restaurant*KOT*Fastfood
             const myArray = mes.split("*");
@@ -39,57 +42,73 @@ module.exports = function (io) {
                     }
                 }
                 console.log("Connected", phpUrl);
-                const response = await axios.post(phpUrl, {}, {
-                    responseType: "stream"
-                });
-                const formattedDate = new Date().toISOString().replace(/[-:.T]/g, '');
 
-                var filename = `invoice_${formattedDate}_${uuidv4()}.pdf`;
-                const writableStream = fs.createWriteStream(filename);
-                response.data.pipe(writableStream);
-                console.log(sendPrint);
-                writableStream.on('finish', async () => {
-                    var printerName = "";
-                    if (pType == "KOT" || pType == "KOTDEL") {
-                        if (sendPrint == "Restaurant") {
-                            printerName = "RESTKITCHEN";
-                        } else {
-                            printerName = "FASTFOOD";
-                        }
-                    } else if (pType == "PrintDS") {
-                        if (sendPrint == "Restaurant") {
-                            printerName = "CHAI";
-                        } else {
-                            printerName = "CHAI";
-                        }
-                    } else {
-                        if (sendPrint == "Restaurant") {
-                            printerName = "RESTPOS";
-                        } else {
-                            printerName = "POSFASTFOOD";
-                        }
-                    }
-                    var cmd = 'PDFtoPrinter.exe';
-                    var args = [filename, printerName];
-                    console.log(`${cmd} ${args.join(' ')}`);
-                    
-                    const child = spawn(cmd, args);
-                    child.on('close', (code) => {
-                        if (code === 0) {
-                            console.log(`Printed ${filename} successfully`);
-                            fs.unlink(filename, (err) => {
-                                if (err) {
-                                    console.error(`Error deleting file: ${err}`);
-                                } else {
-                                    console.log(`Deleted file: ${filename}`);
-                                }
-                            });
-                        } else {
-                            console.error(`Printing failed with code ${code}`);
-                        }
-                    });
-                });
+                // Add the print job to the queue
+                printQueue.push({ phpUrl, pType, sendPrint });
+                processQueue();
             }
         });
     });
 };
+
+async function processQueue() {
+    if (isPrinting || printQueue.length === 0) {
+        return;
+    }
+
+    isPrinting = true;
+    const { phpUrl, pType, sendPrint } = printQueue.shift();
+    
+    try {
+        const response = await axios.post(phpUrl, {}, {
+            responseType: "stream"
+        });
+        const formattedDate = new Date().toISOString().replace(/[-:.T]/g, '');
+        var filename = `invoice_${formattedDate}_${uuidv4()}.pdf`;
+        const writableStream = fs.createWriteStream(filename);
+        response.data.pipe(writableStream);
+        writableStream.on('finish', async () => {
+            var printerName = "";
+            if (pType == "KOT" || pType == "KOTDEL") {
+                if (sendPrint == "Restaurant") {
+                    printerName = "RESTKITCHEN";
+                } else {
+                    printerName = "FASTFOOD";
+                }
+            } else if (pType == "PrintDS") {
+                printerName = "CHAI";
+            } else {
+                if (sendPrint == "Restaurant") {
+                    printerName = "RESTPOS";
+                } else {
+                    printerName = "POSFASTFOOD";
+                }
+            }
+            var cmd = 'PDFtoPrinter.exe';
+            var args = [filename, printerName];
+            console.log(`${cmd} ${args.join(' ')}`);
+            
+            const child = spawn(cmd, args);
+            child.on('close', (code) => {
+                if (code === 0) {
+                    console.log(`Printed ${filename} successfully`);
+                    fs.unlink(filename, (err) => {
+                        if (err) {
+                            console.error(`Error deleting file: ${err}`);
+                        } else {
+                            console.log(`Deleted file: ${filename}`);
+                        }
+                    });
+                } else {
+                    console.error(`Printing failed with code ${code}`);
+                }
+                isPrinting = false;
+                processQueue();
+            });
+        });
+    } catch (error) {
+        console.error(`Error processing print job: ${error}`);
+        isPrinting = false;
+        processQueue();
+    }
+}
